@@ -13,6 +13,7 @@ on:
 jobs:
   validate-branch-merged-with-development:
     name: Check branch already merged with development
+    if: github.event.pull_request.base.ref == 'main'
     runs-on: ubuntu-latest
 
     steps:
@@ -20,16 +21,23 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Configure Git user
+        run: |
+          git config --global user.email "github-actions@github.com"
+          git config --global user.name "github-actions"
 
       - name: Fetch required branches
         run: |
-          git fetch origin main
-          git fetch origin development
+          git fetch origin main:refs/remotes/origin/main
+          git fetch origin development:refs/remotes/origin/development
 
       - name: Show PR details
         run: |
           echo "PR Source Branch: ${{ github.head_ref }}"
           echo "PR Target Branch: ${{ github.base_ref }}"
+          echo "PR Head SHA: ${{ github.event.pull_request.head.sha }}"
           echo "Current commit:"
           git log -1 --oneline
 
@@ -37,11 +45,10 @@ jobs:
         run: |
           echo "Checking whether PR branch changes are already present in development..."
 
+          PR_HEAD="${{ github.event.pull_request.head.sha }}"
           PR_BRANCH="${{ github.head_ref }}"
 
-          git fetch origin "$PR_BRANCH"
-
-          if git merge-base --is-ancestor HEAD origin/development; then
+          if git merge-base --is-ancestor "$PR_HEAD" origin/development; then
             echo "Success: This PR branch is already merged into development."
           else
             echo "Error: This PR branch is not merged into development yet."
@@ -59,9 +66,11 @@ jobs:
         run: |
           echo "Checking whether PR branch can merge cleanly with main..."
 
-          git checkout -b temp-main-validation HEAD
+          PR_HEAD="${{ github.event.pull_request.head.sha }}"
 
-          if git merge --no-commit --no-ff origin/main; then
+          git checkout -b temp-main-validation origin/main
+
+          if git merge --no-commit --no-ff "$PR_HEAD"; then
             echo "Success: PR branch can merge cleanly with main."
             git merge --abort || true
           else
